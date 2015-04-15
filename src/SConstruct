@@ -1,0 +1,40 @@
+src_files = Glob("*.c")
+
+print "Source files:"
+for src_file in src_files:
+	print "\t%s" % src_file
+
+include_dirs = [
+	"/usr/local/include/",
+]
+
+libs = [
+	"glfw3",
+]
+
+lib_dirs = [
+	"/usr/lib",
+	"/usr/local/lib",
+]
+
+frameworks = [
+	"OpenGL",
+	"OpenCL",
+]
+
+
+framework_flags = list()
+for framework in frameworks:
+	framework_flags.append("-framework")
+	framework_flags.append(framework)
+
+env = Environment(
+		CPPPATH=include_dirs,
+		LIBS=libs,
+		LIBPATH=lib_dirs, 
+		LINKFLAGS=framework_flags,
+		variant_dir="build",
+		duplicate=0
+)
+
+env.Program("main", src_files)
