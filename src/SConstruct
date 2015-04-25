@@ -6,6 +6,7 @@ for src_file in src_files:
 
 include_dirs = [
 	"/usr/local/include/",
+	"/opt/local/include/",
 ]
 
 libs = [
@@ -15,6 +16,7 @@ libs = [
 lib_dirs = [
 	"/usr/lib",
 	"/usr/local/lib",
+	"/opt/local/lib",
 ]
 
 frameworks = [

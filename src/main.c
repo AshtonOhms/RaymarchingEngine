@@ -9,6 +9,7 @@
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 768
 
+
 char* loadFile(char* fileName) {
 	char* fileContents;
 	long inputFileSize;
@@ -89,7 +90,7 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 
 int main(int argc, char* args[]) {
 	//OpenCL types and initialization
-	int err;
+	/*int err;
 	size_t global[2];                      // global domain size for our calculation
     size_t local;                       // local domain size for our calculation
 
@@ -118,23 +119,22 @@ int main(int argc, char* args[]) {
     if(!kernel || err != CL_SUCCESS) {
     	printf("Failed to create compute kernel!\n");
     	return EXIT_FAILURE;
-    }
+    }*/
 
     // GLFW Initialization
-    glfwWindowHint(GLFW_SAMPLES, 4); // 4x antialiasing
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); // We want OpenGL 3.3
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make MacOS happy; should not be needed
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); //We don't want the old OpenGL 
-
-    GLFWwindow* window;
-
-    glfwSetErrorCallback(error_callback);
-
     if(!glfwInit()) {
         return EXIT_FAILURE;
     }
 
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); // We want OpenGL 3.3
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); //We don't want the old OpenGL 
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make MacOS happy; should not be needed
+
+    GLFWwindow* window;
+
+    glfwSetErrorCallback(error_callback);
+    
     window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Raytrace Demo", NULL, NULL);
 
     if(!window) {
@@ -143,19 +143,8 @@ int main(int argc, char* args[]) {
     }
 
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-
     glfwSetKeyCallback(window, key_callback);
 
-
-    // Create the output array for the screen texture
-    cl_mem screenMem; 
-    //screenMem = clCreateBuffer(context, CL_MEM_WRITE_ONLY, 
-    //							sizeof(Uint32) * screen->w * screen->h, NULL, NULL);
-    if(!screenMem) {
-    	printf("Failed to allocate device memory!\n");
-    	return EXIT_FAILURE;
-    }
 
     // Set the arguments to the compute kernel
     int time = 0;
@@ -167,68 +156,150 @@ int main(int argc, char* args[]) {
     //err |= clSetKernelArg(kernel, 2, sizeof(Uint32), &height);
     //err |= clSetKernelArg(kernel, 3, sizeof(Uint32), &time);
 
-    if (err != CL_SUCCESS) {
+    /*if (err != CL_SUCCESS) {
     	printf("Error: Failed to set kernel arguments! %d\n", err);
     	return EXIT_FAILURE;
-    }
+    }*/
 
     // Get the maximum work group size for executing the kernel on the device
-    err = clGetKernelWorkGroupInfo(kernel, device_id, CL_KERNEL_WORK_GROUP_SIZE, sizeof(local), &local, NULL);
+    /*err = clGetKernelWorkGroupInfo(kernel, device_id, CL_KERNEL_WORK_GROUP_SIZE, sizeof(local), &local, NULL);
     if(err != CL_SUCCESS) {
     	printf("Failed to retrieve kernel work group info! %d\n", err);
     	return EXIT_FAILURE;
+    }*/
+
+    /*GLuint vertexArrayId;
+    glGenVertexArrays(1, &vertexArrayId);
+    glBindVertexArray(vertexArrayId);*/
+
+    printf("%s\n", glGetString(GL_VERSION));
+
+    // Shader declarations
+    GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
+    GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
+    GLuint programId = glCreateProgram();
+    GLint result = GL_FALSE;
+    int infoLogLength;
+
+    // Create & compile vertex shader
+    const char* vertexShaderSource = loadFile("shaders/vertex.glsl");
+    glShaderSource(vertexShaderId, 1, &vertexShaderSource, NULL);
+    glCompileShader(vertexShaderId);
+
+    // Fetch vertex shader errors
+    glGetShaderiv(vertexShaderId, GL_COMPILE_STATUS, &result);
+    glGetShaderiv(vertexShaderId, GL_INFO_LOG_LENGTH, &infoLogLength);
+    char* vertexShaderErrorMessage = malloc(infoLogLength * sizeof(char));
+    glGetShaderInfoLog(vertexShaderId, infoLogLength, NULL, vertexShaderErrorMessage);
+    printf("Vertex Errors: \n%s\n", vertexShaderErrorMessage);
+
+    // Create and compile fragment shader
+    const char* fragmentShaderSource = loadFile("shaders/fragment.glsl");
+    glShaderSource(fragmentShaderId, 1, &fragmentShaderSource, NULL);
+    glCompileShader(fragmentShaderId);
+
+    // Fetch fragment shader error
+    glGetShaderiv(fragmentShaderId, GL_COMPILE_STATUS, &result);
+    glGetShaderiv(fragmentShaderId, GL_INFO_LOG_LENGTH, &infoLogLength);
+    char* fragmentShaderErrorMessage = malloc(infoLogLength * sizeof(char));
+    glGetShaderInfoLog(fragmentShaderId, infoLogLength, NULL, fragmentShaderErrorMessage);
+    printf("Fragment Errors:\n%s\n", fragmentShaderErrorMessage);
+
+    // Create shader program
+    glAttachShader(programId, vertexShaderId);
+    glAttachShader(programId, fragmentShaderId);
+    glLinkProgram(programId);
+
+    float ratio = width / (float) height;
+
+    GLuint textureId;
+    glGenTextures(1, &textureId);
+    glBindTexture(GL_TEXTURE_2D, textureId);
+
+    int iwidth = 512;
+    int iheight = 512;
+
+    char* data = malloc(iwidth * iheight * 3 * sizeof(char));
+
+    for(int x = 0; x < iwidth; x++) {
+        for(int y = 0; y < iheight; y++) {
+            int index = y * iwidth + x;
+
+            data[index * 3] = 0;
+            data[index * 3 + 1] = 128 * (y%2);
+            data[index * 3 + 2] = 128 * (x%2);
+        }
     }
 
-    float lastFrameTime = 0;
-    int timeDelta = 0;
-    float frameRate;
-    int frameCount = 0;
-    float frameRateCum = 0;
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, iwidth, iheight, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+
+    GLfloat vertexBufferData[] = {
+        1.0f, -1.0f, 0.0f,
+        -1.0f, -1.0f, 0.0f,
+        1.0f, 1.0f, 0.0f,
+        -1.0f, 1.0f, 0.0f,  
+    };
+
+    GLfloat uvBufferData[] = {
+        1.0f, 0.0f,
+        0.0f, 0.0f,
+        1.0f, 1.0f,
+        0.0f, 1.0f,
+    };
 
     GLuint vertexArrayId;
     glGenVertexArrays(1, &vertexArrayId);
     glBindVertexArray(vertexArrayId);
 
-    float ratio = width / (float) height;
-
-    GLfloat vertexBufferData[] = {
-        -ratio, -1.f, 0.f,
-        ratio, -1.f, 0.f,
-        -ratio, 1.0f, 0.f,
-        0.0f, 1.f, 0.f
-    };
-
     GLuint vertexBuffer;
     glGenBuffers(1, &vertexBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertexBufferData), vertexBufferData, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 3 * 4, vertexBufferData, GL_STATIC_DRAW);
+
+    GLuint uvBuffer;
+    glGenBuffers(1, &uvBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, uvBuffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 2 * 4, uvBufferData, GL_STATIC_DRAW);
 
     while(!glfwWindowShouldClose(window)) {
-        lastFrameTime = time;
-        time = glfwGetTime();
-        timeDelta = time - lastFrameTime;
-        frameRate = 1.0f / (timeDelta / 1000.0f);
-
         glfwGetFramebufferSize(window, &width, &height);
         ratio = width / (float) height;
 
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glUseProgram(programId);
+
+        // 1rst attribute buffer : vertices
         glEnableVertexAttribArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
         glVertexAttribPointer(
            0,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
-           4,                  // size
+           3,                  // size
            GL_FLOAT,           // type
            GL_FALSE,           // normalized?
            0,                  // stride
-           (void*)0            // array buffer offset3
+           0            // array buffer offset
+        );
+
+        glEnableVertexAttribArray(1);
+        glBindBuffer(GL_ARRAY_BUFFER, uvBuffer);
+        glVertexAttribPointer(
+           1,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
+           2,                  // size
+           GL_FLOAT,           // type
+           GL_FALSE,           // normalized?
+           0,                  // stride
+           0            // array buffer offset
         );
          
         // Draw the triangle !
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4); // Starting from vertex 0; 3 vertices total -> 1 triangle
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4); 
          
         glDisableVertexAttribArray(0);
-
-
+        glDisableVertexAttribArray(1);
+        
         glfwSwapBuffers(window);
         glfwPollEvents();
 
@@ -237,54 +308,5 @@ int main(int argc, char* args[]) {
     glfwDestroyWindow(window);
     glfwTerminate();
 
-    printf("Avg. Framerate: %f\n", frameRateCum / frameCount);
-
     return EXIT_SUCCESS;
-
-	/*while(running == 1) {
-		SDL_Event event;
-		while(SDL_PollEvent(&event)){
-			switch(event.type) {
-				case SDL_QUIT: running = 0;
-					break;
-			}
-		}
-
-		SDL_FillRect(screen, NULL, 0x000000);
-
-        lastFrameTime = time;
-        time = SDL_GetTicks();
-        timeDelta = time - lastFrameTime;
-        frameRate = 1.0f / (timeDelta / 1000.0f);
-
-        frameCount += 1;
-        frameRateCum += frameRate;
-
-        err = clSetKernelArg(kernel, 3, sizeof(Uint32), &time);
-
-		err = clEnqueueNDRangeKernel(commands, kernel, 2, NULL, global, NULL, 0, NULL, NULL);
-            if (err) {
-			printf("Failed to execute kernel!\n");
-            return EXIT_FAILURE;
-		}
-
-		clFinish(commands);
-
-        err = clEnqueueReadBuffer(commands, screenMem, CL_TRUE, 0, sizeof(Uint32) * screen->w * screen->h,
-                                    pixels, 0, NULL, NULL);
-        if(err != CL_SUCCESS) {
-            printf("Failed to read pixel array!\n");
-            return EXIT_FAILURE;
-        }
-
-		SDL_UpdateWindowSurface(window);
-
-        //SDL_Delay(2000);
-        //break;
-	}
-
-	SDL_DestroyWindow(window);
-	SDL_Quit();
-
-    printf("Avg. Framerate: %f\n", frameRateCum / frameCount); */
 }
