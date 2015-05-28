@@ -1,6 +1,7 @@
 #define GLFW_INCLUDE_GLCOREARB
 
 #include <OpenGL/gl3.h>
+#include <OpenGL/OpenGL.h>
 #include <GLFW/glfw3.h>
 #include <OpenCL/opencl.h>
 #include <stdio.h>
@@ -9,74 +10,24 @@
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 768
 
+#pragma OPENCL EXTENSION cl_khr_gl_sharing : enable
 
 char* loadFile(char* fileName) {
-	char* fileContents;
-	long inputFileSize;
+  char* fileContents;
+  long inputFileSize;
 
-	FILE* inputFile = fopen(fileName, "rb");
-	fseek(inputFile, 0, SEEK_END);
-	inputFileSize = ftell(inputFile);
-	rewind(inputFile);
+  FILE* inputFile = fopen(fileName, "rb");
+  fseek(inputFile, 0, SEEK_END);
+  inputFileSize = ftell(inputFile);
+  rewind(inputFile);
 
-	fileContents = malloc(inputFileSize * sizeof(char));
-	fread(fileContents, sizeof(char), inputFileSize, inputFile);
-	fclose(inputFile);
+  fileContents = malloc(inputFileSize + 1);
+  fread(fileContents, 1, inputFileSize, inputFile);
+  fclose(inputFile);
 
-	return fileContents;
-}
+  fileContents[inputFileSize] = 0;
 
-int initOpenCL(cl_device_id* device_id, cl_context* context, cl_command_queue* commands) {
-	int err;                            // error code returned from api calls
-
-    // Get number of devices
-    cl_uint num_devices;
-    clGetDeviceIDs(NULL, CL_DEVICE_TYPE_GPU, 0, NULL, &num_devices);
-
-    // Load all of the devices in the list
-    cl_device_id* devices = calloc(sizeof(cl_device_id), num_devices);
-    err = clGetDeviceIDs(NULL, CL_DEVICE_TYPE_GPU, num_devices, devices, NULL);
-    if (err != CL_SUCCESS) return err;
-
-    // Specify for the second device (GeForce GT 750M on my machine)
-    *device_id = devices[1];
-
-    // Print out the device name
-    char buf[128];
-    clGetDeviceInfo(*device_id, CL_DEVICE_NAME, 128, buf, NULL);
-    fprintf(stdout, "Device: %s \n", buf);
-
-    // Create the context
-    *context = clCreateContext(0, 1, device_id, NULL, NULL, &err);
-    if (!*context) return err;
-
-    // Create the command queue
-    *commands = clCreateCommandQueue(*context, *device_id, 0, &err);
-    if (!*commands) return err;
-
-    return err;
-}
-
-int createAndBuildProgram(char* kernelSource, cl_device_id* device_id, cl_context* context, cl_program* program) {
-	int err;
-
-	// Create program from loaded source
-    *program = clCreateProgramWithSource(*context, 1, (const char **) &kernelSource, NULL, &err);
-    if ( !*program ) return err;
-
-    // Build the program
-    err = clBuildProgram(*program, 0, NULL, NULL, NULL, NULL);
-    if (err != CL_SUCCESS) {
-    	size_t len;
-    	char buffer[2048];
-
-    	clGetProgramBuildInfo(*program, *device_id, CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
-    	printf("%s\n", buffer);
-
-    	return err;
-    }
-
-	return err;
+  return fileContents;
 }
 
 static void error_callback(int error, const char* description) {
@@ -89,52 +40,35 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 }
 
 int main(int argc, char* args[]) {
-	//OpenCL types and initialization
-	/*int err;
-	size_t global[2];                      // global domain size for our calculation
-    size_t local;                       // local domain size for our calculation
+    //OpenCL types and initialization
+    int err;
+    size_t global[2];                      // global domain size for our calculation
+    size_t local;                           // local domain size for our calculation
 
-	cl_device_id device_id;             // compute device id 
+    cl_platform_id platform_id;
+    cl_device_id devices[10];
+    cl_device_id device_id;             // compute device id
     cl_context context;                 // compute context
     cl_command_queue commands;          // compute command queue
     cl_program program;                 // compute program
     cl_kernel kernel;                   // compute kernel
-
-    // Initialize OpenCL
-    err = initOpenCL(&device_id, &context, &commands);
-    if ( err != CL_SUCCESS ) {
-    	printf("Failed to initialize OpenCL!\n");
-    	return EXIT_FAILURE;
-    }
-
-    // Load the source code for the render kernel
-    char* kernelSource = loadFile("OpenCL/render.cl");
-    err = createAndBuildProgram(kernelSource, &device_id, &context, &program);
-    if (err != CL_SUCCESS) {
-    	printf("Failed to create/build program!\n");
-    	return EXIT_FAILURE;
-    }
-
-    kernel = clCreateKernel(program, "render", &err);
-    if(!kernel || err != CL_SUCCESS) {
-    	printf("Failed to create compute kernel!\n");
-    	return EXIT_FAILURE;
-    }*/
 
     // GLFW Initialization
     if(!glfwInit()) {
         return EXIT_FAILURE;
     }
 
+    printf("GLFW Initialized\n");
+
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); // We want OpenGL 3.3
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); //We don't want the old OpenGL 
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make MacOS happy; should not be needed
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); //We don't want the old OpenGL
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make OS X happy; should not be needed
 
     GLFWwindow* window;
 
     glfwSetErrorCallback(error_callback);
-    
+
     window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Raytrace Demo", NULL, NULL);
 
     if(!window) {
@@ -142,31 +76,77 @@ int main(int argc, char* args[]) {
         return EXIT_FAILURE;
     }
 
+    printf("Window created\n");
+
     glfwMakeContextCurrent(window);
     glfwSetKeyCallback(window, key_callback);
 
+    // Initialize OpenCL
+    CGLContextObj kCGLContext = CGLGetCurrentContext();
+    CGLShareGroupObj kCGLShareGroup = CGLGetShareGroup(kCGLContext);
+
+    printf("OpenGL contexts retrieved\n");
+
+    const GLubyte* openglVendor = glGetString(GL_VENDOR);
+    printf("OpenGL vendor: %s\n", openglVendor);
+
+    cl_context_properties properties[] = {
+        CL_CONTEXT_PROPERTY_USE_CGL_SHAREGROUP_APPLE,
+        (cl_context_properties)kCGLShareGroup, 0
+    };
+
+    clGetPlatformIDs(1, &platform_id, NULL);
+    clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 10, devices, NULL);
+    device_id = devices[1];
+
+    char device_name[256];
+    clGetDeviceInfo(device_id, CL_DEVICE_NAME, 256, device_name, NULL);
+    printf("Device: %s\n", device_name);
+
+    context = clCreateContext(properties, 0, 0, NULL, 0, 0);
+    commands = clCreateCommandQueue(context, device_id, 0, &err);
+
+    printf("OpenCL context created\n");
+
+    // Load the source code for the render kernel
+    char* kernelSource = loadFile("OpenCL/render.cl");
+
+    //printf("%s\n", kernelSource);
+
+    program = clCreateProgramWithSource(context, 1, (const char **) &kernelSource, NULL, &err);
+    if (err != CL_SUCCESS) {
+        printf("Failed to create program\n");
+        return EXIT_FAILURE;
+    }
+    printf("Program created\n");
+
+    err = clBuildProgram(program, 1, &device_id, NULL, NULL, NULL);
+    if (err != CL_SUCCESS) {
+      size_t len;
+      clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
+
+      char* buffer = malloc(len + 1);
+      buffer[len] = 0;
+
+      clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
+      printf("Failed to build program %d:\n%s\n", err, buffer);
+
+      return EXIT_FAILURE;
+    }
+    printf("Program built\n");
+
+    kernel = clCreateKernel(program, "render", &err);
+    if(!kernel || err != CL_SUCCESS) {
+        printf("Failed to create compute kernel %d\n", err);
+        return EXIT_FAILURE;
+    }
+
+    printf("Kernel created\n");
 
     // Set the arguments to the compute kernel
-    int time = 0;
+    double time = 0.0;
     int width = WINDOW_WIDTH;
     int height = WINDOW_HEIGHT;
-
-    //err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &screenMem);
-    //err |= clSetKernelArg(kernel, 1, sizeof(Uint32), &width);
-    //err |= clSetKernelArg(kernel, 2, sizeof(Uint32), &height);
-    //err |= clSetKernelArg(kernel, 3, sizeof(Uint32), &time);
-
-    /*if (err != CL_SUCCESS) {
-    	printf("Error: Failed to set kernel arguments! %d\n", err);
-    	return EXIT_FAILURE;
-    }*/
-
-    // Get the maximum work group size for executing the kernel on the device
-    /*err = clGetKernelWorkGroupInfo(kernel, device_id, CL_KERNEL_WORK_GROUP_SIZE, sizeof(local), &local, NULL);
-    if(err != CL_SUCCESS) {
-    	printf("Failed to retrieve kernel work group info! %d\n", err);
-    	return EXIT_FAILURE;
-    }*/
 
     /*GLuint vertexArrayId;
     glGenVertexArrays(1, &vertexArrayId);
@@ -216,31 +196,43 @@ int main(int argc, char* args[]) {
     glGenTextures(1, &textureId);
     glBindTexture(GL_TEXTURE_2D, textureId);
 
-    int iwidth = 512;
-    int iheight = 512;
+    int iwidth = 1024;
+    int iheight = 768;
 
-    char* data = malloc(iwidth * iheight * 3 * sizeof(char));
+    char* data = calloc(iwidth * iheight * 4, sizeof(char));
 
-    for(int x = 0; x < iwidth; x++) {
-        for(int y = 0; y < iheight; y++) {
-            int index = y * iwidth + x;
-
-            data[index * 3] = 0;
-            data[index * 3 + 1] = 128 * (y%2);
-            data[index * 3 + 2] = 128 * (x%2);
-        }
-    }
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, iwidth, iheight, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, iwidth, iheight, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+
+    cl_mem mTexture = clCreateFromGLTexture(context, CL_MEM_WRITE_ONLY,
+                                            GL_TEXTURE_2D, 0, textureId, &err);
+
+    if (err != CL_SUCCESS) {
+        printf("Failed to bind texture! %d\n", err);
+        return EXIT_FAILURE;
+    }
+
+    printf("Texture bound.\n");
+
+    err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &mTexture);
+    err |= clSetKernelArg(kernel, 1, sizeof(int), &iwidth);
+    err |= clSetKernelArg(kernel, 2, sizeof(int), &iheight);
+    err |= clSetKernelArg(kernel, 3, sizeof(double), &time);
+
+    if (err != CL_SUCCESS) {
+        printf("Error: Failed to set kernel arguments! %d\n", err);
+        return EXIT_FAILURE;
+    }
+
+    printf("Kernel arguments initialized\n");
 
     GLfloat vertexBufferData[] = {
         1.0f, -1.0f, 0.0f,
         -1.0f, -1.0f, 0.0f,
         1.0f, 1.0f, 0.0f,
-        -1.0f, 1.0f, 0.0f,  
+        -1.0f, 1.0f, 0.0f,
     };
 
     GLfloat uvBufferData[] = {
@@ -264,46 +256,71 @@ int main(int argc, char* args[]) {
     glBindBuffer(GL_ARRAY_BUFFER, uvBuffer);
     glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 2 * 4, uvBufferData, GL_STATIC_DRAW);
 
+    global[0] = iwidth;
+    global[1] = iheight;
+
+    // Get the maximum work group size for executing the kernel on the device
+    err = clGetKernelWorkGroupInfo(kernel, device_id, CL_KERNEL_WORK_GROUP_SIZE, sizeof(local), &local, NULL);
+    if(err != CL_SUCCESS) {
+      printf("Failed to retrieve kernel work group info! %d\n", err);
+      return EXIT_FAILURE;
+    }
+
+    glfwSetTime(0.0f);
+    int frameCount = 0;
+
     while(!glfwWindowShouldClose(window)) {
+        time = glfwGetTime();
+        err = clSetKernelArg(kernel, 3, sizeof(double), &time);
+
+        err = clEnqueueAcquireGLObjects(commands, 1, &mTexture, 0, NULL, NULL);
+        if (err != CL_SUCCESS) {
+            printf("Failed to acquire screen texture %d", err);
+        }
+
+        err = clEnqueueNDRangeKernel(commands, kernel, 2, NULL, global, NULL, 0, NULL, NULL);
+        if (err != CL_SUCCESS){
+            printf("Failed to execute kernel %d\n", err);
+        }
+
+        err = clEnqueueReleaseGLObjects(commands, 1, &mTexture, 0, NULL, NULL);
+        if (err != CL_SUCCESS) {
+            printf("Failed to release screen texture %d", err);
+        }
+
+        clFinish(commands);
+
+
         glfwGetFramebufferSize(window, &width, &height);
         ratio = width / (float) height;
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glUseProgram(programId);
 
-        // 1rst attribute buffer : vertices
+        // Vertex attribute buffer
         glEnableVertexAttribArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-        glVertexAttribPointer(
-           0,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
-           3,                  // size
-           GL_FLOAT,           // type
-           GL_FALSE,           // normalized?
-           0,                  // stride
-           0            // array buffer offset
-        );
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
+        // UV attribute buffer
         glEnableVertexAttribArray(1);
         glBindBuffer(GL_ARRAY_BUFFER, uvBuffer);
-        glVertexAttribPointer(
-           1,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
-           2,                  // size
-           GL_FLOAT,           // type
-           GL_FALSE,           // normalized?
-           0,                  // stride
-           0            // array buffer offset
-        );
-         
-        // Draw the triangle !
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4); 
-         
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+        // Draw the screen
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
         glDisableVertexAttribArray(0);
         glDisableVertexAttribArray(1);
-        
+
         glfwSwapBuffers(window);
         glfwPollEvents();
 
+        frameCount += 1;
     }
+
+    double fps = frameCount / glfwGetTime();
+    printf("FPS: %f\n", fps);
 
     glfwDestroyWindow(window);
     glfwTerminate();

@@ -1,8 +1,8 @@
 
 #pragma OPENCL EXTENSION cl_khr_gl_sharing : enable
 
-#define MAX_STEPS 40
-#define EPSILON 0.005f
+#define MAX_STEPS 30
+#define EPSILON 0.01f
 
 float distBox(float4 point, float4 box) {
 	float4 d = fabs(point) - box;
@@ -18,7 +18,7 @@ float distScene(float4 point) {
 		distSphere(point, 1.0f));
 
 	dist = max(dist, -distBox(point, (float4) (0.5f, 1.2f, 0.5f, 0.0f) ));
-	dist = max(dist, -distBox(point, (float4) (1.2f, 0.5f, 0.5f, 0.0f) ));
+	//dist = max(dist, -distBox(point, (float4) (1.2f, 0.5f, 0.5f, 0.0f) ));
 
 	return dist;
 	//return distBox(point, (float4) (0.5f, 0.5f, 0.5f, 0.0f));
@@ -58,15 +58,13 @@ float4 rayMarch(float4 rayOrigin, float4 rayDirection) {
 }
 
 __kernel void render(
-	__global unsigned int* output,
+	write_only image2d_t output,
 	const unsigned int width,
 	const unsigned int height,
-	const float time) {
+	const double time) {
 
 	int xPixel = get_global_id(0);
-	int yPixel = height - get_global_id(1);
-
-	float timef = time / 1000.0f;
+	int yPixel = height - get_global_id(1) - 1;
 
 	//Camera math shennanigans
 	float4 eye = (float4) (0.0f, 0.0f, -4.0f, 0.0f);
@@ -76,8 +74,8 @@ __kernel void render(
 
 	float focalLength = 2.0f;
 
-	eye.y += sin(timef);
-	eye.x += cos(timef);
+	eye.y += sin(time);
+	eye.x += cos(time);
 
 	float aRatio = (float) width / height;
 
@@ -95,5 +93,8 @@ __kernel void render(
 	pixel += ((unsigned int) floor(255 * color.y )) << 8;
 	pixel += ((unsigned int) floor(255 * color.x )) << 16;
 
-	output[yPixel * width + xPixel] = pixel;
+	int2 pixel_coord = (int2) (xPixel, yPixel);
+	write_imagef(output, pixel_coord, color);
+
+	//output[yPixel * width + xPixel] = pixel;
 }
